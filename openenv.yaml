@@ -1,0 +1,64 @@
+name: BugFixerEnv
+
+description: >
+  An environment where an agent is presented with a buggy Python function
+  and must submit a corrected version.  Reward equals the fraction of
+  automated test cases that the fixed code passes (0.0 – 1.0).
+  Tasks progress from a simple off-by-one error (easy) through an
+  algorithmic logic bug (medium) to a multi-bug bracket validator (hard).
+
+observation_space:
+  type: object
+  properties:
+    task_id:
+      type: string
+      enum: [easy, medium, hard]
+    description:
+      type: string
+      description: Natural-language description of what the function should do
+    buggy_code:
+      type: string
+      description: The broken Python function the agent must fix
+    steps_taken:
+      type: integer
+    max_steps:
+      type: integer
+    last_reward:
+      type: number
+      minimum: 0.0
+      maximum: 1.0
+    done:
+      type: boolean
+
+action_space:
+  type: object
+  properties:
+    fixed_code:
+      type: string
+      description: Corrected Python source code containing the fixed function
+
+tasks:
+  - id: easy
+    description: Fix an off-by-one error in a range-based summation function
+    max_steps: 5
+    reward_range: [0.0, 1.0]
+
+  - id: medium
+    description: Fix a subtraction/addition bug in Kadane's maximum subarray algorithm
+    max_steps: 5
+    reward_range: [0.0, 1.0]
+
+  - id: hard
+    description: Fix two bugs in a bracket-validation function (wrong return values)
+    max_steps: 5
+    reward_range: [0.0, 1.0]
+
+reward:
+  type: continuous
+  range: [0.0, 1.0]
+  description: >
+    Fraction of automated test cases passed by the submitted fixed_code.
+    Partial credit is awarded for partially correct fixes, giving a
+    meaningful gradient signal across all difficulty levels.
+
+version: "1.0.0"
