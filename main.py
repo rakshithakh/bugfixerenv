@@ -6,18 +6,13 @@ Exposes the OpenEnv-compatible HTTP interface.
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from env import BugFixerEnv
-
-
-# ---------------------------------------------------------------------------
-# App + single shared environment instance
-# ---------------------------------------------------------------------------
+from env import BugFixerEnv, Action
 
 app = FastAPI(
     title="BugFixerEnv",
     description=(
         "OpenEnv-compatible environment where an agent is given a buggy Python "
-        "function and must submit a corrected version.  Reward = test-pass rate (0–1)."
+        "function and must submit a corrected version. Reward = test-pass rate (0–1)."
     ),
     version="1.0.0",
 )
@@ -26,7 +21,7 @@ env = BugFixerEnv()
 
 
 # ---------------------------------------------------------------------------
-# Request / Response models
+# Request models
 # ---------------------------------------------------------------------------
 
 class ResetRequest(BaseModel):
@@ -38,7 +33,7 @@ class StepRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Endpoints  (match hackathon spec exactly)
+# Endpoints
 # ---------------------------------------------------------------------------
 
 @app.get("/")
@@ -53,28 +48,25 @@ def root():
 
 
 @app.post("/reset")
-def reset(request: ResetRequest = None):            # noqa: B008
-    """Start a new episode.  Optionally pass {"task_id": "easy"|"medium"|"hard"}."""
+def reset(request: ResetRequest = None):
     task_id = (request.task_id if request else None) or "easy"
     try:
-        return env.reset(task_id)
+        obs = env.reset(task_id)
+        return obs.model_dump()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/step")
 def step(request: StepRequest):
-    """
-    Submit a fix attempt.
-    Body: {"action": {"fixed_code": "<your python code>"}}
-    """
     try:
-        return env.step(request.action)
+        action = Action(fixed_code=request.action.get("fixed_code", ""))
+        result = env.step(action)
+        return result.model_dump()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/state")
 def state():
-    """Return the current observation without advancing the episode."""
-    return env.state()
+    return env.state().model_dump()
