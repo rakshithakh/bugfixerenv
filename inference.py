@@ -2,9 +2,10 @@
 BugFixerEnv — Baseline Inference Script
 
 Required env variables:
-  API_BASE_URL  – base URL of the running BugFixerEnv server
-  MODEL_NAME    – model identifier
-  HF_TOKEN      – HuggingFace API token
+  API_BASE_URL   – base URL of the running BugFixerEnv server
+  MODEL_NAME     – model identifier
+  HF_TOKEN       – HuggingFace API token
+  OPENAI_API_KEY – alternative to HF_TOKEN (OpenAI key)
 
 STDOUT FORMAT (mandatory):
   [START] task=<task_name> env=bugfixerenv model=<model_name>
@@ -26,20 +27,29 @@ from openai import OpenAI
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "meta-llama/Llama-3.3-70B-Instruct")
 HF_TOKEN     = os.getenv("HF_TOKEN",     "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 BENCHMARK    = "bugfixerenv"
 
-if not HF_TOKEN:
-    print("[ERROR] HF_TOKEN environment variable is not set.", file=sys.stderr)
+# Accept either HF_TOKEN or OPENAI_API_KEY
+API_KEY = HF_TOKEN or OPENAI_API_KEY
+
+if not API_KEY:
+    print("[ERROR] Set HF_TOKEN or OPENAI_API_KEY environment variable.", file=sys.stderr)
     sys.exit(1)
 
 # ---------------------------------------------------------------------------
 # OpenAI-compatible client
+# If OPENAI_API_KEY is set, use OpenAI directly.
+# Otherwise use HuggingFace router.
 # ---------------------------------------------------------------------------
 
-client = OpenAI(
-    base_url="https://router.huggingface.co/v1/",
-    api_key=HF_TOKEN,
-)
+if OPENAI_API_KEY and not HF_TOKEN:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+else:
+    client = OpenAI(
+        base_url="https://router.huggingface.co/v1/",
+        api_key=HF_TOKEN,
+    )
 
 # ---------------------------------------------------------------------------
 # Structured log helpers — EXACT required format
@@ -50,7 +60,6 @@ def log_start(task: str, env: str, model: str) -> None:
 
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
-    # Escape newlines in action so it stays on one line
     action_clean = action.replace("\n", "\\n").replace("\r", "")
     error_val = error if error else "null"
     print(
@@ -111,7 +120,6 @@ def run_episode(task_id: str) -> float:
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        # Reset environment
         resp = requests.post(
             f"{API_BASE_URL}/reset",
             json={"task_id": task_id},
@@ -120,7 +128,6 @@ def run_episode(task_id: str) -> float:
         resp.raise_for_status()
         obs = resp.json()
 
-        # Ask LLM to fix the bug
         completion = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -134,7 +141,6 @@ def run_episode(task_id: str) -> float:
         )
         fixed_code = strip_fences(completion.choices[0].message.content)
 
-        # Submit fix
         step_resp = requests.post(
             f"{API_BASE_URL}/step",
             json={"action": {"fixed_code": fixed_code}},
@@ -148,13 +154,7 @@ def run_episode(task_id: str) -> float:
         steps_taken = 1
         rewards.append(reward)
 
-        log_step(
-            step=1,
-            action=fixed_code,
-            reward=reward,
-            done=done,
-            error=None,
-        )
+        log_step(step=1, action=fixed_code, reward=reward, done=done, error=None)
 
         score   = reward
         success = score >= 1.0
