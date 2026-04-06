@@ -1,7 +1,14 @@
-# server/app.py — OpenEnv server entry point
-# Required by openenv validate. Re-exports the FastAPI app from main.py.
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+import uvicorn
 from main import app
 
-__all__ = ["app"]
+
+def main():
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+
+
+if __name__ == "__main__":
+    main()
